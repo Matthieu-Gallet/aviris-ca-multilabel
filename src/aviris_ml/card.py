@@ -266,8 +266,8 @@ x = cube[ok]                # valid dates only
 meta = load_dataset("<user>/<dataset>", "windows", split="train").to_pandas()   # no cubes
 ```
 
-Streaming (`streaming=True`) avoids downloading all shards. Each row is ~{T * n_bands * 1024 * 2 / 1e6:.1f} MB
-uncompressed. `scripts/load_example.py` and `scripts/sanity_check.py` give complete examples
+Streaming (`streaming=True`) avoids downloading all shards. Each cube is ~{T * n_bands * 1024 * 2 / 1e6:.1f} MB as float16;
+`with_format("numpy")` returns float32 arrays (~{T * n_bands * 1024 * 4 / 1e6:.0f} MB per sample in memory). `scripts/load_example.py` and `scripts/sanity_check.py` give complete examples
 (the latter computes Ledoit-Wolf spectral covariances per date and checks that they are SPD).
 
 ## 6. Known issues
@@ -283,10 +283,12 @@ uncompressed. `scripts/load_example.py` and `scripts/sanity_check.py` give compl
   `metadata/dates.*` and `frac_outside_m0.2_2_qc_ok` in `bands.csv`. Clip (e.g. to [-0.05, 1.5])
   or mask such pixels before computing statistics. Slightly negative values
   ({chk_vals.get('frac_lt_0', float('nan')):.1%} of the values of kept bands on QC-ok dates) are kept as delivered.
-* Residual date-specific artefacts remain in kept bands, at lower rates than the removed ones
-  (max spike rate {chk_spk.get('max_rate_final', float('nan')):.4f} vs. threshold {sel['threshold']:.4f}). The 940 nm water-vapour feature is only
-  partly removed (937 and 947 nm): the neighbouring 928 and 957 nm bands still carry
-  atmospheric residuals on some dates; moderate spikes remain near 2350-2370 nm (2020-10-13 lines).
+* Residual date-specific artefacts remain in kept bands. With the base-mask neighbours, the
+  highest spike rate of a kept band is {chk_spk.get('max_rate_final', float('nan')):.4f} (threshold {sel['threshold']:.4f}); recomputed on the final band set,
+  the bands next to removed ones rise ({', '.join(f'{w:.0f} nm: {r:.3f}' for w, r in chk_spk.get('worst_final_recomputed', [])[:3])}): the 940 nm water-vapour
+  feature is only partly removed (937 and 947 nm) and 928 / 957 nm still carry atmospheric
+  residuals on some dates. Moderate spikes remain near 2350-2370 nm (mostly the 2020-10-13 lines).
+  The band list depends on the rate factor: {'; '.join(f"x{k}: {v['n_kept']} bands" for k, v in chk_spk.get('sensitivity_factor', {}).items())}.
 * Wavelength calibration differs slightly between flight lines (<= {(B.wavelength_max_nm - B.wavelength_min_nm).max():.1f} nm); bands are not resampled.
 * Irregular time series: dates are concentrated in 2013-2015, gaps of several years; give the
   dates to the model. Acquisition geometry, season, atmosphere and native resolution vary.

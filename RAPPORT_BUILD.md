@@ -14,6 +14,12 @@ OMP_NUM_THREADS=1 nice -n 10 uv run aviris-ml build --stage all \
 ```
 
 Durées : passe QC sur les 2034 cubes en 75 s ; export en ~2 min (3 processus).
+
+**Reproductibilité.** La même commande, réduite à `--from-existing`, a été relancée dans un
+répertoire de travail vide. Elle utilise alors les fichiers de référence embarqués dans
+`src/aviris_ml/data/` : table des bandes, comptes CDL et lignes de vol. Les 24 fichiers de la
+release obtenue sont **identiques octet par octet** à ceux de la release livrée, shards Parquet
+compris. Cette copie de test a ensuite été supprimée.
 `cdl_counts_mix2034.npz` est extrait de `phase2/work/cand_fine.npz` (comptes CDL 2008-2021 pour
 40 groupes, cache de l'ancienne construction). Il reproduit exactement `props_by_year.npz`
 (écart max 3e-8).
@@ -54,10 +60,24 @@ Durées : passe QC sur les 2034 cubes en 75 s ; export en ~2 min (3 processus).
   apparaissent sur ~1,2 % des couples, surtout sur les vols 2017-2019. Elle est retirée.
 * Zone 2350-2370 nm : taux de 0,007 (2357 nm), dû surtout aux vols du 2020-10-13. Elle reste
   sous le seuil et ces bandes sont gardées.
-* Taux après nettoyage, avec les voisines du masque de base : max 0,0115 (2437 nm).
-* Taux recalculé sur les 157 bandes : 928 nm (0,088) et 957 nm (0,048) deviennent des bords de
-  segment après le retrait de 938-947 nm. Le reste de la bande de vapeur d'eau à 940 nm est donc
-  encore bruité (décision à valider, voir plus bas).
+* Après nettoyage, la statistique dépend de la façon de la calculer :
+  * avec les voisines du masque de base, le max vaut 0,0115 (2437 nm). Il est sous le seuil par
+    construction : ce n'est pas un test.
+  * recalculée sur les 157 bandes, elle monte à 0,088 pour 928 nm et à 0,048 pour 957 nm. Ces deux
+    bandes deviennent des bords de segment après le retrait de 938-947 nm. Le reste de la bande de
+    vapeur d'eau à 940 nm reste donc bruité (décision à valider, voir plus bas).
+* Sensibilité au facteur de seuil (nombre de bandes gardées) :
+
+  | facteur | bandes gardées | effet |
+  |---|---|---|
+  | ×10 | 152 | retire en plus 434, 655, 1263, 2357 et 2437 nm |
+  | ×15 | 154 | |
+  | ×20 | 157 | choix retenu |
+  | ×25 | 159 | 947 et **1742 nm** sont gardées |
+  | ×30 | 160 | |
+
+  Le retrait de 1742 nm (le pic vers 1750 nm) ne tient qu'à ~5 % au-dessus du seuil. Il dépend
+  donc du facteur choisi.
 * Valeurs (bandes gardées, couples QC-ok) :
   * 1,2 % des valeurs sont < 0 ;
   * 0,025 % sont > 1 ;
@@ -137,6 +157,11 @@ plusieurs :
   `classes.csv`, et 98/98 covariances de Ledoit-Wolf 157 × 157 SPD (rétrécissement médian 0,0026).
 * `scripts/load_example.py` renvoie OK.
 * `pytest` : 16 tests passent sur données synthétiques.
+* `checks.json` :
+  * le minimum de pixels CDL cartographiés sur les années utilisées vaut 323 (seuil 320) ;
+  * aucune date acquise n'a d'étiquette manquante ;
+  * les bandes déclarées dans les shards correspondent à `bands.csv` (157), et la forme du cube
+    est (14, 157, 32, 32).
 
 ## Décisions à valider
 
@@ -151,3 +176,4 @@ plusieurs :
    signalées (`outlier_frac`). On pourrait les masquer en NaN ou retirer ces dates du QC.
 4. **Licence** du jeu dérivé (`license: other` pour l'instant) et citation.
 5. **Plis** : nouvelle répartition, différente de MIX.
+6. **Licence du code** : aucune n'a été choisie pour le dépôt.

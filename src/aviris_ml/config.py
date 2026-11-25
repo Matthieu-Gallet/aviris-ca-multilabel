@@ -179,3 +179,10 @@ def packaged_windows_csv() -> str:
 
 def packaged_cdl_legend() -> str:
     return str(resources.files("aviris_ml") / "data" / "cdl_legend.json")
+
+
+def packaged(name: str) -> str:
+    """Packaged reference files: bands_reference.csv (band table from the 975 flight-line
+    headers of the original build), flight_lines_reference.csv (header info + ORNL URL of the
+    flight lines used), cdl_counts_reference.npz (CDL group counts 2008-2021 of the 2034 windows)."""
+    return str(resources.files("aviris_ml") / "data" / name)

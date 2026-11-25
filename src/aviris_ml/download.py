@@ -131,7 +131,7 @@ class Downloader:
 
         wdir = os.path.join(self.raw_dir, str(window_id))
         side = os.path.join(wdir, f"{date}.json")
-        if os.path.exists(side):
+        if os.path.exists(side) and os.path.exists(os.path.join(wdir, f"{date}.npy")):
             with open(side) as f:
                 return json.load(f), None
         bounds = config.cell_bounds(window_id)

@@ -64,8 +64,11 @@ def run_checks(ctx, write_card: bool = True) -> dict:
     co = (lw.T.astype(int) @ lw.astype(int))
     union = (ld == 1).any(1)
     inter = np.where(acq[..., None], ld == 1, True).all(1)
+    yi = {int(y): i for i, y in enumerate(lab["years"])}
+    used = [lab["mapped_year"][n, yi[int(str(d)[:4])]] for n in range(len(wid)) for d in qz["dates"][n] if str(d)]
     res["labels"] = dict(
-        threshold=config.PRESENCE_THRESHOLD,
+        threshold=config.PRESENCE_THRESHOLD, min_mapped_cdl_pixels_used_years=int(min(used)),
+        acquired_dates_with_missing_label=int((ld[acq] == -1).any(-1).sum()),
         labels_per_window={int(k): int((npw == k).sum()) for k in range(npw.max() + 1)},
         mean_labels_per_window=float(npw.mean()), windows_without_label=int((npw == 0).sum()),
         window_positives={c: int(lw[:, k].sum()) for k, c in enumerate(CL)},
@@ -122,6 +125,11 @@ def run_checks(ctx, write_card: bool = True) -> dict:
                          max_rate_final_recomputed=float(np.nanmax(bt.spike_rate_final_recomputed[keep])),
                          worst_final_recomputed=[(float(bt.wavelength_nm[i]), float(bt.spike_rate_final_recomputed[i])) for i in np.argsort(-bt.spike_rate_final_recomputed.fillna(-1).to_numpy())[:6]],
                          top_outside_m0_2_2_kept=[(float(bt.wavelength_nm[i]), float(bt["frac_outside_m0.2_2_qc_ok"][i])) for i in np.argsort(-np.where(keep, bt["frac_outside_m0.2_2_qc_ok"].to_numpy(), -1))[:8]])
+    r0 = bt.spike_rate_base.to_numpy()
+    med = float(np.nanmedian(r0[b0]))
+    res["spikes"]["sensitivity_factor"] = {str(f): dict(n_kept=int(b0.sum() - (r0[b0] > max(f * med, config.SPIKE_RATE_MIN)).sum()),
+                                                        dropped_nm=[round(float(bt.wavelength_nm[i])) for i in np.nonzero(b0 & (np.nan_to_num(r0) > max(f * med, config.SPIKE_RATE_MIN)))[0]])
+                                           for f in (10, 15, 20, 25, 30)}
     res["source_consistency"] = _source_consistency(ctx, wid, qz, lab)
     # ---------------------------------------------------------------- shards
     sh = os.path.join(R, "data")
@@ -135,10 +143,17 @@ def run_checks(ctx, write_card: bool = True) -> dict:
             pf = pq.ParquetFile(os.path.join(sh, f))
             t = pf.read(columns=["window_id", "fold"])
             ids += t.column("window_id").to_pylist()
+            from .export import shard_bands
+
+            hf = json.loads((pf.schema_arrow.metadata or {}).get(b"huggingface", b"{}"))
+            shape = hf.get("info", {}).get("features", {}).get("cube", {}).get("shape")
+            sb = shard_bands(os.path.join(sh, f))
             info.append(dict(file=f, rows=pf.metadata.num_rows, row_groups=pf.metadata.num_row_groups, gb=round(os.path.getsize(os.path.join(sh, f)) / 1e9, 3),
-                             folds=sorted(set(t.column("fold").to_pylist()))))
+                             folds=sorted(set(t.column("fold").to_pylist())), n_bands_meta=len(sb) if sb else None, cube_shape=shape,
+                             bands_match_bands_csv=sb == [int(b) for b in np.nonzero(bt["release_index"].to_numpy() >= 0)[0]] if "release_index" in bt else None))
         res["shards"] = dict(files=info, total_rows=len(ids), unique_windows=len(set(ids)), all_windows_present=bool(set(ids) == set(wid.tolist())),
-                             max_gb=max(i["gb"] for i in info) if info else 0, folds_consistent=all(len(i["folds"]) == 1 for i in info))
+                             max_gb=max(i["gb"] for i in info) if info else 0, folds_consistent=all(len(i["folds"]) == 1 for i in info),
+                             bands_consistent=all(i["bands_match_bands_csv"] and i["cube_shape"][1] == i["n_bands_meta"] for i in info))
     os.makedirs(os.path.join(R, "metadata"), exist_ok=True)
     with open(os.path.join(R, "metadata", "checks.json"), "w") as f:
         json.dump(res, f, indent=1)

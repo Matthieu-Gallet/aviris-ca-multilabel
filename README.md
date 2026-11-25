@@ -41,15 +41,23 @@ uv run pytest -q             # tests on tiny synthetic data (no network)
 ```bash
 uv run aviris-ml build --stage all \
     --from-existing /DATA/DATASET/HYPERSPECTRAL/AVIRIS-C_CA_TS14_MIX \
-    --headers /DATA/_staging/aviris_v2_build/hdr \
-    --cdl-cache ~/projets/aviris-ca-multilabel-work/existing/cdl_counts_mix2034.npz \
     --work ~/projets/aviris-ca-multilabel-work --release ~/projets/aviris-ca-multilabel-release --workers 3
 uv run aviris-ml check --from-existing /DATA/DATASET/HYPERSPECTRAL/AVIRIS-C_CA_TS14_MIX   # re-run checks + card
 ```
 
-`--from-existing` only reads the source folder. `--headers` gives the ENVI headers of the flight
-lines (band table, flight-line table). Without `--cdl-cache` the `groundtruth` stage downloads the
-CDL from Planetary Computer.
+`--from-existing` only reads the source folder (cubes, and `meta/` for consistency checks).
+Small reference files of the original build are packaged in `src/aviris_ml/data/` and used by
+default, so this command needs nothing else:
+
+* `bands_reference.csv`: median wavelength / FWHM over the 975 flight-line headers (overridden
+  by `--headers DIR` or by the headers fetched by the `download` stage);
+* `cdl_counts_reference.npz`: CDL counts of the 40 groups, 2008-2021, for the 2034 windows
+  (overridden by `--cdl-cache`; in network mode the `groundtruth` stage fetches the CDL);
+  rebuilt from the original cache with `tools/extract_cdl_cache.py`;
+* `flight_lines_reference.csv`: format, rotation, pixel size and ORNL URL of the 943 flight lines.
+
+A rebuild with this command into a fresh work directory gives a release identical to the
+published one (all Parquet shards and tables byte-identical, see `RAPPORT_BUILD.md`).
 
 ### From the archives (network)
 

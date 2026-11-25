@@ -35,6 +35,7 @@ def _parser() -> argparse.ArgumentParser:
     c.add_argument("--work", default="~/projets/aviris-ca-multilabel-work")
     c.add_argument("--release", default="~/projets/aviris-ca-multilabel-release")
     c.add_argument("--from-existing", default=None)
+    c.add_argument("--all-bands", action="store_true")
     return ap
 
 
@@ -46,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "check":
         from .checks import run_checks
 
-        ctx = Context(a.work, a.release, from_existing=a.from_existing)
+        ctx = Context(a.work, a.release, from_existing=a.from_existing, all_bands=a.all_bands)
         run_checks(ctx)
         return 0
     ids = [int(x) for x in a.window_ids.split(",")] if a.window_ids else None

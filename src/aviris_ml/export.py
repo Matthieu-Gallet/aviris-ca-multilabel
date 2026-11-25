@@ -30,6 +30,14 @@ from .envi import parse_header
 
 log = logging.getLogger(__name__)
 ROW_GROUP = 16
+BANDS_KEY = b"aviris_ml_bands"  # parquet schema metadata: source band indices of the cube
+
+
+def shard_bands(path: str) -> list[int] | None:
+    import pyarrow.parquet as pq
+
+    md = pq.read_schema(path).metadata or {}
+    return json.loads(md[BANDS_KEY]) if BANDS_KEY in md else None
 MAX_WINDOWS_PER_SHARD = 210
 
 
@@ -58,6 +66,7 @@ def _write_shard(args) -> tuple[str, int, int]:
 
     feat = features(len(band_idx))
     schema = feat.arrow_schema
+    schema = schema.with_metadata({**(schema.metadata or {}), BANDS_KEY: json.dumps([int(b) for b in band_idx]).encode()})
     tmp = path + ".part"
     w = pq.ParquetWriter(tmp, schema, compression="zstd", compression_level=6)
     for k in range(0, len(recs), ROW_GROUP):
@@ -191,10 +200,12 @@ def export_release(ctx) -> None:
     bout.to_csv(os.path.join(R, "bands.csv"), index=False)
 
     # ---------------------------------------------------------------- flight lines
-    hinfo = _header_info(header_dirs(ctx))
-    urls = {}
+    ref = pd.read_csv(config.packaged("flight_lines_reference.csv")).set_index("flight_id")
+    hinfo = {k: {c: v[c] for c in ref.columns if c not in ("date", "ornl_url")} for k, v in ref.iterrows()}
+    hinfo.update(_header_info(header_dirs(ctx)))
+    urls = ref["ornl_url"].dropna().to_dict()
     if os.path.exists(ctx.p("cmr_flights.json")):
-        urls = {k: v["url"] for k, v in json.load(open(ctx.p("cmr_flights.json"))).items()}
+        urls.update({k: v["url"] for k, v in json.load(open(ctx.p("cmr_flights.json"))).items()})
     use: dict[str, list] = {}
     for n in range(len(wid)):
         for t in range(T):
@@ -209,6 +220,7 @@ def export_release(ctx) -> None:
     # ---------------------------------------------------------------- shards
     paths = cube_index(ctx)
     jobs = []
+    expected = set()
     for f_ in range(config.N_FOLDS):
         idx = np.nonzero(fold == f_)[0]
         if not len(idx):
@@ -225,10 +237,15 @@ def export_release(ctx) -> None:
                     props_date=lab["props_date"][n], labels_window=lab["labels_window"][n].tolist(),
                     props_window=lab["props_window"][n].tolist()))
             p = os.path.join(R, "data", f"fold_{f_}-{s:05d}-of-{nsh:05d}.parquet")
-            if os.path.exists(p) and not ctx.force:
+            expected.add(os.path.basename(p))
+            if os.path.exists(p) and not ctx.force and shard_bands(p) == [int(b) for b in band_idx]:
                 log.info("reuse %s", os.path.basename(p))
                 continue
             jobs.append((p, recs, paths, band_idx))
+    for f in os.listdir(os.path.join(R, "data")):  # shards of an older layout
+        if f.endswith(".parquet") and f not in expected:
+            log.info("remove stale shard %s", f)
+            os.remove(os.path.join(R, "data", f))
     with ProcessPoolExecutor(ctx.workers) as ex:
         for p, n, size in ex.map(_write_shard, jobs):
             log.info("export: %s %d windows %.2f GB", os.path.basename(p), n, size / 1e9)

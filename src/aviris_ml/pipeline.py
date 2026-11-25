@@ -109,9 +109,11 @@ def stage_qc(ctx: Context) -> None:
     bt_path = ctx.p("bands_reference.csv")
     if not ctx.done(bt_path):
         hdrs = [h for d in header_dirs(ctx) for h in bandsmod.headers_in(d)]
-        if not hdrs:
-            raise SystemExit("qc: no ENVI headers found (use --headers DIR or run the download stage)")
-        bt = bandsmod.header_band_table(hdrs)
+        if hdrs:
+            bt = bandsmod.header_band_table(hdrs)
+        else:
+            log.info("qc: no ENVI headers given, using the packaged band table")
+            bt = pd.read_csv(config.packaged("bands_reference.csv"))
         bt.to_csv(bt_path, index=False)
     bt = pd.read_csv(bt_path)
     wl = bt["wavelength_nm"].to_numpy()
@@ -160,14 +162,15 @@ def stage_groundtruth(ctx: Context) -> None:
     out = ctx.p("cdl_counts.npz")
     if ctx.done(out):
         return
-    if ctx.cdl_cache:
-        wid, cnt, years = gt.load_counts(ctx.cdl_cache)
+    cache = ctx.cdl_cache or (config.packaged("cdl_counts_reference.npz") if ctx.from_existing else None)
+    if cache:
+        wid, cnt, years = gt.load_counts(cache)
         pos = {int(w): i for i, w in enumerate(wid)}
         miss = [int(w) for w in ctx.ids if int(w) not in pos]
         if miss:
             raise SystemExit(f"groundtruth: {len(miss)} windows missing in the CDL cache")
         counts = {int(w): cnt[pos[int(w)]] for w in ctx.ids}
-        log.info("groundtruth: %d windows taken from cache %s", len(counts), ctx.cdl_cache)
+        log.info("groundtruth: %d windows taken from cache %s", len(counts), cache)
     else:
         counts = gt.fetch_counts([r for r in ctx.rows], workers=ctx.workers)
         years = config.CDL_YEARS
@@ -191,6 +194,12 @@ def stage_labels(ctx: Context) -> None:
     cnt = cnt[[pos[int(w)] for w in wid_q]]
     py, tot = labmod.year_props(cnt)
     dates = z["dates"]
+    yi = {y: i for i, y in enumerate(years)}
+    bad = [(int(wid_q[n]), str(d)) for n in range(len(wid_q)) for d in dates[n]
+           if str(d) and tot[n, yi[int(str(d)[:4])]] < config.CDL_MIN_MAPPED]
+    if bad:
+        raise SystemExit(f"labels: {len(bad)} (window, date) pairs whose CDL year has < {config.CDL_MIN_MAPPED} mapped pixels, "
+                         f"e.g. {bad[:3]} (failed CDL reads? rerun groundtruth with --force)")
     pdate = labmod.date_props(py, dates, years)
     pwin = labmod.window_props(py, dates, years)
     ldate = labmod.multilabel(pdate)
