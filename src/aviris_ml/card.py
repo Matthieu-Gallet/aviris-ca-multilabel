@@ -63,8 +63,10 @@ def write_card(ctx, R: str, n_bands: int) -> None:
         for _, r in C.iterrows())
     present = sorted({int(f.split("-")[0].split("_")[1]) for f in shards})
     split_yaml = "\n".join(f"  - split: fold_{f}\n    path: data/fold_{f}-*.parquet" for f in present)
-    tvt_yaml = ("  - split: train\n    path:\n" + "".join(f"    - data/fold_{f}-*.parquet\n" for f in range(3))
-                + "  - split: validation\n    path: data/fold_3-*.parquet\n  - split: test\n    path: data/fold_4-*.parquet")
+    # fold k is the test set and fold (k + 1) mod 5 the validation set, as in spdnet-datasets;
+    # this configuration is k = 4: train folds 1-3, validation fold 0, test fold 4
+    tvt_yaml = ("  - split: train\n    path:\n" + "".join(f"    - data/fold_{f}-*.parquet\n" for f in (1, 2, 3))
+                + "  - split: validation\n    path: data/fold_0-*.parquet\n  - split: test\n    path: data/fold_4-*.parquet")
 
     card = f"""---
 license: cc-by-4.0
@@ -244,7 +246,9 @@ to 5 folds (greedy, balancing every class and the number of windows). No block a
 is in two folds. Configurations:
 
 * `default`: splits `fold_0` ... `fold_4` (5-fold spatial cross-validation, recommended);
-* `train_val_test`: folds 0-2 / 3 / 4;
+* `train_val_test`: train folds 1-3, validation fold 0, test fold 4. It follows the rule used for
+  cross-validation: with fold k as test, fold (k + 1) mod 5 is the validation set and the three
+  others are the training set (here k = 4);
 * `windows`, `dates`, `cdl_by_year`: metadata tables only (no cubes, single split `train` holding all rows), fast to load.
 
 For a geographic-transfer test, hold out `zone == "Z2_SantaBarbara"` or `"Z4_SFBay_JasperRidge"`
