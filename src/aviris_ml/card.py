@@ -256,7 +256,7 @@ and train on windows far away (e.g. > 25 km).
 from datasets import load_dataset
 import numpy as np
 
-ds = load_dataset("<user>/<dataset>", split="fold_0").with_format("numpy")   # or a local path
+ds = load_dataset("musmb/aviris-ca-multilabel", split="fold_0").with_format("numpy")   # or a local path
 s = ds[0]
 cube = s["cube"]            # (14, {n_bands}, 32, 32) reflectance, NaN = no data
 ok = s["qc_ok"]             # (14,) bool
@@ -264,7 +264,7 @@ y_win = s["labels_window"]  # (13,) multilabel
 y_t = s["labels_date"]      # (14, 13), -1 for padded dates
 x = cube[ok]                # valid dates only
 
-meta = load_dataset("<user>/<dataset>", "windows", split="train").to_pandas()   # no cubes
+meta = load_dataset("musmb/aviris-ca-multilabel", "windows", split="train").to_pandas()   # no cubes
 ```
 
 Streaming (`streaming=True`) avoids downloading all shards. Each cube is ~{T * n_bands * 1024 * 2 / 1e6:.1f} MB as float16;

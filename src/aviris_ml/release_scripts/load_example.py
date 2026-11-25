@@ -1,7 +1,7 @@
 """Loading example for the AVIRIS-C California multilabel dataset.
 
 Usage:
-    python load_example.py [DATASET]     # DATASET = local folder of the release or "<user>/<name>" on the Hub
+    python load_example.py [DATASET]     # DATASET = local folder of the release or "musmb/aviris-ca-multilabel" on the Hub
 
 Requires: datasets, numpy, pandas (torch optional).
 """
