@@ -9,7 +9,8 @@ The anomaly is A_b = e_b - median over the window's QC-ok dates of e_b, which re
 features of the surface itself (red edge, absorption shoulders) and keeps date-specific
 artefacts. A (window, date) has a spike at b when |A_b| > SPIKE_REL * max(s_b, SPIKE_FLOOR).
 The spike rate of a band is the fraction of QC-ok (window, date) pairs with a spike at b.
-Rule: drop the base-mask bands whose rate exceeds SPIKE_RATE_FACTOR x the median rate.
+Rule: drop the base-mask bands whose rate exceeds SPIKE_RATE_FACTOR x the median rate, then
+remove explicitly the 940 nm water-vapour feature (EXPLICIT_REMOVED_RANGES_NM).
 """
 from __future__ import annotations
 
@@ -50,6 +51,15 @@ def base_mask(reference_wavelength: np.ndarray) -> np.ndarray:
     for lo, hi in config.BASE_REMOVED_RANGES_NM:
         keep &= ~((w >= lo) & (w <= hi))
     return keep
+
+
+def explicit_removed(reference_wavelength: np.ndarray) -> np.ndarray:
+    """True for bands inside EXPLICIT_REMOVED_RANGES_NM (940 nm water-vapour feature)."""
+    w = np.asarray(reference_wavelength)
+    out = np.zeros(len(w), bool)
+    for lo, hi in config.EXPLICIT_REMOVED_RANGES_NM:
+        out |= (w >= lo) & (w <= hi)
+    return out
 
 
 def runs(mask: np.ndarray) -> list[np.ndarray]:

@@ -3,6 +3,7 @@ name = "aviris-ml"
 version = "0.1.0"
 description = "Build an AVIRIS-Classic hyperspectral time-series multilabel dataset (California, CDL labels)"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",

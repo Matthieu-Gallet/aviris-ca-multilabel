@@ -1,7 +1,7 @@
-# Rapport de construction — AVIRIS-C Californie, multilabel (2026-11-25)
+# Rapport de construction — AVIRIS-C Californie, multilabel (2026-11-25, version à 155 bandes)
 
-Release locale : `BERTHA:~/projets/aviris-ca-multilabel-release` (6,7 Gio / 7,2 Go, 10 shards
-Parquet de 0,69 à 0,75 Go). Rien n'a été publié ni écrit sous `/DATA`.
+Release locale : `BERTHA:~/projets/aviris-ca-multilabel-release` (6,6 Gio / 7,1 Go, 10 shards
+Parquet de 0,69 à 0,74 Go). Rien n'a été publié ni écrit sous `/DATA`.
 
 ## Commande exécutée
 
@@ -55,24 +55,24 @@ compris. Cette copie de test a ensuite été supprimée.
   * 2407 nm (0,017)
   * 947 nm (0,013)
   * 1742 nm (0,013)
-* **Résultat : 157 bandes.**
+* Le critère de pic seul laisse 157 bandes. On retire ensuite explicitement les ailes de la bande
+  de vapeur d'eau à 940 nm (plage 920-965 nm, soit 928 et 957 nm en plus de 938 et 947 nm).
+* **Résultat final (validé) : 155 bandes.** La colonne `removed_by` de `bands.csv` donne la raison
+  du retrait : `base_mask`, `spike` ou `water_vapour_940`.
 * Pic à 1750 nm : il porte sur une seule bande, 1742 nm. Des valeurs jusqu'à 2·10^4 y
   apparaissent sur ~1,2 % des couples, surtout sur les vols 2017-2019. Elle est retirée.
 * Zone 2350-2370 nm : taux de 0,007 (2357 nm), dû surtout aux vols du 2020-10-13. Elle reste
   sous le seuil et ces bandes sont gardées.
-* Après nettoyage, la statistique dépend de la façon de la calculer :
-  * avec les voisines du masque de base, le max vaut 0,0115 (2437 nm). Il est sous le seuil par
-    construction : ce n'est pas un test.
-  * recalculée sur les 157 bandes, elle monte à 0,088 pour 928 nm et à 0,048 pour 957 nm. Ces deux
-    bandes deviennent des bords de segment après le retrait de 938-947 nm. Le reste de la bande de
-    vapeur d'eau à 940 nm reste donc bruité (décision à valider, voir plus bas).
+* Après nettoyage (155 bandes), la statistique recalculée sur le jeu final de bandes a un max de
+  0,027 à 434 nm, puis 0,012 à 2427 nm. Avant le retrait explicite des ailes à 940 nm, ce max
+  montait à 0,088 à 928 nm et à 0,048 à 957 nm : c'est ce qui a motivé ce retrait.
 * Sensibilité au facteur de seuil (nombre de bandes gardées) :
 
   | facteur | bandes gardées | effet |
   |---|---|---|
   | ×10 | 152 | retire en plus 434, 655, 1263, 2357 et 2437 nm |
   | ×15 | 154 | |
-  | ×20 | 157 | choix retenu |
+  | ×20 | 157 | choix retenu, puis 155 après le retrait des ailes à 940 nm |
   | ×25 | 159 | 947 et **1742 nm** sont gardées |
   | ×30 | 160 | |
 
@@ -153,27 +153,24 @@ plusieurs :
 
 * `load_dataset(<release>)` donne les splits fold_0 à fold_4. Les configurations
   `train_val_test`, `windows`, `dates` et `cdl_by_year` se résolvent aussi.
-* `scripts/sanity_check.py . 8` renvoie OK : formes (14, 157, 32, 32), comptes conformes à
-  `classes.csv`, et 98/98 covariances de Ledoit-Wolf 157 × 157 SPD (rétrécissement médian 0,0026).
+* `scripts/sanity_check.py . 8` renvoie OK : formes (14, 155, 32, 32), comptes conformes à
+  `classes.csv`, et 98/98 covariances de Ledoit-Wolf 155 × 155 SPD (rétrécissement médian 0,0026).
 * `scripts/load_example.py` renvoie OK.
-* `pytest` : 16 tests passent sur données synthétiques.
+* `pytest` : 17 tests passent sur données synthétiques.
 * `checks.json` :
   * le minimum de pixels CDL cartographiés sur les années utilisées vaut 323 (seuil 320) ;
   * aucune date acquise n'a d'étiquette manquante ;
-  * les bandes déclarées dans les shards correspondent à `bands.csv` (157), et la forme du cube
-    est (14, 157, 32, 32).
+  * les bandes déclarées dans les shards correspondent à `bands.csv` (155), et la forme du cube
+    est (14, 155, 32, 32).
 
-## Décisions à valider
+## Décisions (validées le 2026-11-25)
 
-1. **Étiquette fenêtre** : moyenne sur les années distinctes, au lieu de l'union ou de la
-   majorité des dates.
-2. **Bandes** : 157 retenues.
-   * Faut-il retirer aussi 928 et 957 nm, c'est-à-dire tout le pic de vapeur d'eau, ce qui
-     donnerait ~155 bandes ?
-   * Faut-il au contraire garder 937 et 947 nm, ce qui donnerait 159 bandes ?
-   * 2357-2367 nm est gardé.
-3. **Valeurs aberrantes** : 641 couples ont des valeurs hors [-0,2 ; 2]. Elles sont seulement
-   signalées (`outlier_frac`). On pourrait les masquer en NaN ou retirer ces dates du QC.
-4. **Licence** du jeu dérivé (`license: other` pour l'instant) et citation.
-5. **Plis** : nouvelle répartition, différente de MIX.
-6. **Licence du code** : aucune n'a été choisie pour le dépôt.
+1. **Étiquette fenêtre** : moyenne des proportions sur les années distinctes des dates (conservée).
+2. **Bandes** : 155. Règle : masque de base, puis critère de pic ×20, puis retrait explicite de la
+   bande de vapeur d'eau à 940 nm (920-965 nm). 2357-2367 nm est gardé.
+3. **Valeurs aberrantes** : conservées telles quelles et signalées (`outlier_frac`, colonnes de
+   `bands.csv`).
+4. **Licences** : jeu de données sous CC BY 4.0 (`license: cc-by-4.0`). `LICENSE.md` exige de citer
+   NASA/JPL AVIRIS-Classic L2 via l'ORNL DAAC et l'USDA NASS CDL. Code sous MIT (`LICENSE`).
+   La citation BibTeX reste à compléter.
+5. **Plis** : la nouvelle répartition équilibrée sur les multilabels est conservée.

@@ -40,11 +40,11 @@ if os.path.exists(os.path.join(src, "classes.csv")):
         if got != C[f"windows_fold_{f}"].tolist():
             fail.append(f"fold {f} label counts differ from classes.csv")
 
-ds = load_dataset(src, split="fold_0", streaming=True)
+# non-streaming load (one fold is converted once to the local Arrow cache, ~1.4 GB)
+ds = load_dataset(src, split="fold_0")
 spd, total, shrink = 0, 0, []
-for i, s in enumerate(ds):
-    if i >= n_samples:
-        break
+for i in range(min(n_samples, len(ds))):
+    s = ds[i]
     cube = np.asarray(s["cube"], dtype=np.float64)
     T, B, H, W = cube.shape
     ok = np.asarray(s["qc_ok"], bool)

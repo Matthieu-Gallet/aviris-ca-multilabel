@@ -126,8 +126,13 @@ def stage_qc(ctx: Context) -> None:
     # band selection from the spike statistic on QC-ok window-mean spectra
     z = np.load(stats)
     spec, okd = z["mean_spec"], z["qc_ok"] > 0
-    mask, rate0, dropped = bandsmod.select_bands(spec, okd, m0)
+    mask_spike, rate0, dropped = bandsmod.select_bands(spec, okd, m0)
+    explicit = bandsmod.explicit_removed(wl) & mask_spike
+    mask = mask_spike & ~explicit
+    reason = np.where(~m0, "base_mask", np.where(~mask_spike, "spike", np.where(explicit, "water_vapour_940", "")))
     bt["kept_base"] = m0.astype(int)
+    bt["kept_spike"] = mask_spike.astype(int)
+    bt["removed_by"] = reason
     bt["kept"] = mask.astype(int)
     bt["spike_rate_base"] = np.round(rate0, 5)
     # "final": the same statistic (base-mask neighbours) restricted to the kept bands;
@@ -148,11 +153,15 @@ def stage_qc(ctx: Context) -> None:
     bt.to_csv(ctx.p("bands.csv"), index=False)
     med = float(np.nanmedian(rate0))
     with open(ctx.p("bands_selection.json"), "w") as f:
-        json.dump(dict(n_base=int(m0.sum()), n_final=int(mask.sum()), dropped=[int(b) for b in dropped],
+        json.dump(dict(n_base=int(m0.sum()), n_after_spike=int(mask_spike.sum()), n_final=int(mask.sum()),
+                       explicit_removed=[int(b) for b in np.nonzero(explicit)[0]],
+                       explicit_removed_wavelengths=[float(wl[b]) for b in np.nonzero(explicit)[0]],
+                       explicit_ranges_nm=config.EXPLICIT_REMOVED_RANGES_NM, dropped=[int(b) for b in dropped],
                        dropped_wavelengths=[float(wl[b]) for b in dropped], dropped_rates=[float(rate0[b]) for b in dropped],
                        median_rate_base=med, threshold=max(config.SPIKE_RATE_FACTOR * med, config.SPIKE_RATE_MIN), n_pairs=int(okd.sum()),
                        spike_rel=config.SPIKE_REL, spike_floor=config.SPIKE_FLOOR, rate_factor=config.SPIKE_RATE_FACTOR), f, indent=1)
-    log.info("qc: %d bands kept after spike screening (dropped %s nm)", mask.sum(), [round(float(wl[b])) for b in dropped])
+    log.info("qc: %d bands kept (spike: %s nm; explicit: %s nm)", mask.sum(), [round(float(wl[b])) for b in dropped],
+             [round(float(wl[b])) for b in np.nonzero(explicit)[0]])
 
 
 # ------------------------------------------------------------------------------------ groundtruth

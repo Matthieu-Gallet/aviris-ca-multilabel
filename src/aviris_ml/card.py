@@ -67,9 +67,7 @@ def write_card(ctx, R: str, n_bands: int) -> None:
                 + "  - split: validation\n    path: data/fold_3-*.parquet\n  - split: test\n    path: data/fold_4-*.parquet")
 
     card = f"""---
-license: other
-license_name: derived-from-nasa-and-usda-open-data
-license_link: LICENSE.md
+license: cc-by-4.0
 pretty_name: AVIRIS-Classic California hyperspectral time series, multilabel land cover (CDL)
 task_categories:
 - image-classification
@@ -202,7 +200,10 @@ intersecting each window were read, with HTTP Range requests.
 median over the window's dates (removing surface features such as the red edge), counts as a spike
 when larger than {config.SPIKE_REL:.0%} of the band reflectance (floor {config.SPIKE_FLOOR}). Bands whose spike
 rate exceeds {config.SPIKE_RATE_FACTOR:.0f} x the median rate ({sel['median_rate_base']:.5f}) are removed:
-**{', '.join(extra)} nm** ({len(extra)} bands), leaving {n_bands} bands. `bands.csv` gives, for all 224
+**{', '.join(extra)} nm** ({len(extra)} bands, {sel['n_after_spike']} left). Finally the wings of the 940 nm water-vapour
+feature, which keep atmospheric residuals once 937/947 nm are gone, are removed explicitly
+(**{', '.join(f'{w:.0f}' for w in sel['explicit_removed_wavelengths'])} nm**, range {'-'.join(f'{v:.0f}' for v in config.EXPLICIT_REMOVED_RANGES_NM[0])} nm), leaving **{n_bands} bands**.
+Column `removed_by` of `bands.csv` gives the reason (`base_mask`, `spike`, `water_vapour_940`). `bands.csv` gives, for all 224
 bands, the median wavelength and FWHM over the flight-line headers, their min/max (wavelengths
 differ by at most {(B.wavelength_max_nm - B.wavelength_min_nm).max():.1f} nm between flights; bands are *not* resampled),
 `kept_base`, `kept`, `release_index` (position in `cube`, -1 if dropped), spike rates before/after
@@ -283,12 +284,10 @@ Streaming (`streaming=True`) avoids downloading all shards. Each cube is ~{T * n
   `metadata/dates.*` and `frac_outside_m0.2_2_qc_ok` in `bands.csv`. Clip (e.g. to [-0.05, 1.5])
   or mask such pixels before computing statistics. Slightly negative values
   ({chk_vals.get('frac_lt_0', float('nan')):.1%} of the values of kept bands on QC-ok dates) are kept as delivered.
-* Residual date-specific artefacts remain in kept bands. With the base-mask neighbours, the
-  highest spike rate of a kept band is {chk_spk.get('max_rate_final', float('nan')):.4f} (threshold {sel['threshold']:.4f}); recomputed on the final band set,
-  the bands next to removed ones rise ({', '.join(f'{w:.0f} nm: {r:.3f}' for w, r in chk_spk.get('worst_final_recomputed', [])[:3])}): the 940 nm water-vapour
-  feature is only partly removed (937 and 947 nm) and 928 / 957 nm still carry atmospheric
-  residuals on some dates. Moderate spikes remain near 2350-2370 nm (mostly the 2020-10-13 lines).
-  The band list depends on the rate factor: {'; '.join(f"x{k}: {v['n_kept']} bands" for k, v in chk_spk.get('sensitivity_factor', {}).items())}.
+* Residual date-specific artefacts remain in kept bands at lower rates (spike rate of the kept
+  bands recomputed on the final band set: max {chk_spk.get('max_rate_final_recomputed', float('nan')):.3f}, at {', '.join(f'{w:.0f} nm: {r:.3f}' for w, r in chk_spk.get('worst_final_recomputed', [])[:3])};
+  threshold {sel['threshold']:.4f}). Moderate spikes remain near 2350-2370 nm (mostly the 2020-10-13 lines).
+  The spike rule depends on its factor: {'; '.join(f"x{k}: {v['n_kept']} bands" for k, v in chk_spk.get('sensitivity_factor', {}).items())} (before the explicit 940 nm removal).
 * Wavelength calibration differs slightly between flight lines (<= {(B.wavelength_max_nm - B.wavelength_min_nm).max():.1f} nm); bands are not resampled.
 * Irregular time series: dates are concentrated in 2013-2015, gaps of several years; give the
   dates to the model. Acquisition geometry, season, atmosphere and native resolution vary.
@@ -302,10 +301,10 @@ Streaming (`streaming=True`) avoids downloading all shards. Each cube is ~{T * n
 
 ## 7. Licence
 
-Derived from public-domain / open data: AVIRIS-Classic L2 reflectance (NASA/JPL, distributed by
-the ORNL DAAC, open with citation) and the USDA NASS Cropland Data Layer (public domain). The
-licence of this derived dataset is to be confirmed by the authors (see `LICENSE.md`). Please cite
-the original data providers (below).
+This dataset is released under the **Creative Commons Attribution 4.0 International** licence
+(CC BY 4.0, see `LICENSE.md`). It is derived from AVIRIS-Classic L2 reflectance (NASA/JPL,
+distributed by the ORNL DAAC) and from the USDA NASS Cropland Data Layer; reuse must credit this
+dataset and these original data providers (see `LICENSE.md` and section 9).
 
 ## 8. Citation
 
@@ -329,15 +328,30 @@ the original data providers (below).
 """
     with open(os.path.join(R, "README.md"), "w") as f:
         f.write(card)
-    lic = """# Licence (to be confirmed)
+    lic = """# Licence: Creative Commons Attribution 4.0 International (CC BY 4.0)
 
-This dataset is derived from:
+This dataset (AVIRIS-C California hyperspectral time series, multilabel land cover) is licensed
+under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
 
-* AVIRIS-Classic L2 calibrated reflectance (NASA/JPL), distributed by the ORNL DAAC. NASA
-  Earth science data are openly shared without restriction; please cite the data source.
-* USDA NASS Cropland Data Layer, public domain; please cite USDA NASS.
+You may share and adapt it for any purpose, provided that you give appropriate credit, provide
+a link to the licence and indicate if changes were made.
 
-The licence under which the derived dataset itself is released has not been decided yet.
+## Attribution requirements
+
+Any use or redistribution must credit this dataset **and** the original data providers:
+
+* **AVIRIS-Classic L2 calibrated reflectance**: NASA Jet Propulsion Laboratory (JPL), AVIRIS-Classic
+  airborne imaging spectrometer; data distributed by the Oak Ridge National Laboratory Distributed
+  Active Archive Center (ORNL DAAC), NASA Earthdata (CMR collection C2711871294-ORNL_CLOUD).
+  Cite the ORNL DAAC dataset as indicated on its landing page.
+* **USDA NASS Cropland Data Layer** (2008-2021): USDA National Agricultural Statistics Service
+  Cropland Data Layer, published crop-specific data layer, USDA-NASS, Washington, DC
+  (https://www.nass.usda.gov/Research_and_Science/Cropland/), accessed through the Microsoft
+  Planetary Computer (collection usda-cdl).
+
+The labels are derived from the CDL by the authors of this dataset (grouping into 13 classes,
+10 % presence threshold); they are not an official USDA product. NASA, JPL, ORNL DAAC and USDA
+do not endorse this dataset.
 """
     with open(os.path.join(R, "LICENSE.md"), "w") as f:
         f.write(lic)

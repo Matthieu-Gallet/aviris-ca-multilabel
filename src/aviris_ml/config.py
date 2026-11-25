@@ -78,6 +78,9 @@ SPIKE_FLOOR = 0.05
 SPIKE_REL_GROSS = 0.25  # reported only (large spikes)
 SPIKE_RATE_FACTOR = 20.0
 SPIKE_RATE_MIN = 0.001  # absolute floor of the threshold
+# Explicit removal applied after the spike criterion: the whole 940 nm water-vapour feature
+# (the spike criterion removes 937/947 nm; their wings 928/957 nm keep atmospheric residuals).
+EXPLICIT_REMOVED_RANGES_NM = [(920.0, 965.0)]
 # Pixel values outside this range in the base-mask bands are counted as outliers (QC column).
 OUTLIER_RANGE = (-0.2, 2.0)
 

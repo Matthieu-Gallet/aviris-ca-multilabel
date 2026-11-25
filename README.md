@@ -92,18 +92,22 @@ pattern, max |diff| = 0) and CDL counts identical for 2008-2021.
 | qc | ~75 s with 3 processes |
 | groundtruth | one STAC search per window + one COG read per (year, tile); minutes to ~1 h depending on the network |
 | labels | seconds |
-| export | ~2 min with 3 processes; release ~7 GB (6.7 GiB) |
+| export | ~2 min with 3 processes; release ~7 GB |
 
-## Decisions (see the dataset card for details)
+## Decisions (validated; see the dataset card for details)
 
 * Windows: the 2034 windows of `AVIRIS-C_CA_TS14_MIX`, 14 dates each (171 windows have padded dates).
 * Bands: base mask (365-414, 1303-1473, 1782-2028, 2447-2496 nm removed: 166 bands), then
   spike screening (`bands.py`): isolated-band deviation of the window-mean spectrum minus its
   temporal median, spike if > 10 % of max(reflectance, 0.05); bands whose spike rate exceeds 20 x
-  the median rate are removed.
+  the median rate are removed (9 bands), then the 940 nm water-vapour feature is removed explicitly
+  (920-965 nm: 928 and 957 nm in addition to the spike-flagged 938/947 nm). **155 bands** (validated).
 * Labels: class present if >= 10 % of the mapped CDL pixels. Per date: CDL of the acquisition
   year. Window: mean of the yearly proportions over the distinct years of the window's dates.
 * Splits: 10.2 km blocks (17 x 17 windows) assigned greedily to 5 folds, balancing classes.
+* Out-of-range values are kept and flagged (`outlier_frac`), not masked.
+* Licences: dataset CC BY 4.0 (attribution to NASA/JPL AVIRIS-Classic via ORNL DAAC and USDA NASS
+  CDL, see the release `LICENSE.md`); code MIT (`LICENSE`).
 
 ## Layout
 

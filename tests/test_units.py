@@ -101,6 +101,11 @@ def test_base_mask_ranges():
     assert len(bands.runs(m)) == 3
 
 
+def test_explicit_940_removal():
+    w = np.array([918.4, 928.1, 937.8, 947.4, 957.1, 966.7])
+    assert bands.explicit_removed(w).tolist() == [False, True, True, True, True, False]
+
+
 def test_spike_detection_isolated_band():
     rng = np.random.default_rng(1)
     m0 = bands.base_mask(WL)
